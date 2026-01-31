@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Upload, Sliders, Image as ImageIcon, Download, RefreshCw, Wand2, ArrowLeft, Plus, FileText } from 'lucide-react';
+import React, { useState } from 'react';
+import { Image as ImageIcon, Download, RefreshCw, Wand2, ArrowLeft, Plus, FileText } from 'lucide-react';
 import { AppStep, AspectRatio, AnalyzedElement, GeneratedImage, Template } from './types';
 import { analyzeImageContents, generateRecomposedImage, generateNewImage } from './services/geminiService';
 import { convertPdfToImage, saveImageAsPdf } from './services/pdfService';
@@ -18,11 +18,8 @@ const App = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState("");
-  
-  // New creation mode state
   const [isNewCreationMode, setIsNewCreationMode] = useState(false);
 
-  // 1. Handle File Upload (Image or PDF)
   const handleFileSelect = async (file: File) => {
     setIsLoading(true);
     setError(null);
@@ -31,33 +28,23 @@ const App = () => {
       let base64Image = "";
 
       if (file.type === 'application/pdf') {
-        // Convert PDF to Image first
-        try {
-          base64Image = await convertPdfToImage(file);
-        } catch (pdfError) {
-          console.error(pdfError);
-          throw new Error("Failed to read PDF file. Ensure it is a valid document.");
-        }
+        base64Image = await convertPdfToImage(file);
       } else {
-        // Handle regular image
         base64Image = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target?.result as string);
-          reader.onerror = reject;
+          reader.onerror = () => reject(new Error("Failed to read image file."));
           reader.readAsDataURL(file);
         });
       }
 
       setOriginalImage(base64Image);
-      
-      // Move to analysis
       setCurrentStep(AppStep.ANALYSIS);
       const elements = await analyzeImageContents(base64Image);
       setAnalyzedElements(elements);
       setCurrentStep(AppStep.SELECTION);
 
     } catch (err: any) {
-      console.error(err);
       setError(err.message || "Failed to process file. Please try again.");
       setCurrentStep(AppStep.UPLOAD);
     } finally {
@@ -65,14 +52,12 @@ const App = () => {
     }
   };
 
-  // 2. Toggle Elements
   const toggleElement = (id: string) => {
     setAnalyzedElements(prev => prev.map(el => 
       el.id === id ? { ...el, selected: !el.selected } : el
     ));
   };
 
-  // 3. Generate Image
   const handleGenerate = async () => {
     setIsLoading(true);
     setError(null);
@@ -85,7 +70,6 @@ const App = () => {
             promptUsed: customPrompt
         });
       } else if (originalImage) {
-        // Recomposition Mode
         const resultUrl = await generateRecomposedImage(
             originalImage,
             analyzedElements,
@@ -101,18 +85,17 @@ const App = () => {
       }
       setCurrentStep(AppStep.RESULT);
     } catch (err) {
-      setError("Failed to generate image. The model might be busy or the request invalid.");
+      setError("Magic Server is currently busy or the composition was too complex. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 4. Download helpers
   const downloadImage = (format: 'png' | 'jpeg') => {
     if (!generatedImage) return;
     const link = document.createElement('a');
     link.href = generatedImage.url;
-    link.download = `composed-vision.${format}`;
+    link.download = `nim-magic-output.${format}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -120,10 +103,9 @@ const App = () => {
 
   const downloadPdf = () => {
     if (!generatedImage) return;
-    saveImageAsPdf(generatedImage.url, 'composed-vision.pdf');
+    saveImageAsPdf(generatedImage.url, 'nim-magic-output.pdf');
   };
 
-  // Render Steps
   const renderContent = () => {
     switch (currentStep) {
       case AppStep.UPLOAD:
@@ -131,12 +113,12 @@ const App = () => {
            <div className="max-w-4xl mx-auto w-full">
             <FileUpload onFileSelect={handleFileSelect} />
             <div className="mt-8 text-center">
-                <p className="text-gray-400 mb-4">Or create something from scratch</p>
+                <p className="text-gray-400 mb-4">Or use N.I.M's direct magic</p>
                 <Button variant="secondary" onClick={() => {
                     setIsNewCreationMode(true);
                     setCurrentStep(AppStep.CONFIGURATION);
                 }}>
-                    <Plus size={18} /> Create New Image
+                    <Plus size={18} /> Create New from Scratch
                 </Button>
             </div>
            </div>
@@ -147,7 +129,7 @@ const App = () => {
           <div className="flex flex-col items-center justify-center h-[50vh] text-center">
             <div className="w-16 h-16 border-4 border-tavern-gold border-t-transparent rounded-full animate-spin mb-6"></div>
             <h2 className="text-2xl font-bold text-white mb-2">Analyzing Content</h2>
-            <p className="text-gray-400">Rasterizing documents, identifying subjects, and reading structure...</p>
+            <p className="text-gray-400">N.I.M is reading your file, identifying objects, and preparing for magic...</p>
           </div>
         );
 
@@ -156,11 +138,11 @@ const App = () => {
           <div className="h-full flex flex-col">
             <div className="mb-6 flex justify-between items-center">
                 <div>
-                    <h2 className="text-2xl font-bold text-white">Select Elements</h2>
-                    <p className="text-gray-400">Choose what to keep from the original source</p>
+                    <h2 className="text-2xl font-bold text-white">Magic Wand Selection</h2>
+                    <p className="text-gray-400">Click elements to keep them in the new landscape</p>
                 </div>
                 <Button onClick={() => setCurrentStep(AppStep.CONFIGURATION)}>
-                    Next Step <ArrowLeft className="rotate-180 ml-2" size={18} />
+                    Style Settings <ArrowLeft className="rotate-180 ml-2" size={18} />
                 </Button>
             </div>
             {originalImage && (
@@ -177,23 +159,27 @@ const App = () => {
         return (
           <div className="max-w-6xl mx-auto w-full">
              <div className="mb-8 flex justify-between items-center">
-                <Button variant="ghost" onClick={() => setCurrentStep(isNewCreationMode ? AppStep.UPLOAD : AppStep.SELECTION)}>
+                <Button variant="ghost" onClick={() => {
+                  if (isNewCreationMode) {
+                    setIsNewCreationMode(false);
+                    setCurrentStep(AppStep.UPLOAD);
+                  } else {
+                    setCurrentStep(AppStep.SELECTION);
+                  }
+                }}>
                     <ArrowLeft size={18} /> Back
                 </Button>
                 <h2 className="text-2xl font-bold text-white">
-                    {isNewCreationMode ? 'Create New Image' : 'Configure Composition'}
+                    {isNewCreationMode ? 'Infinite Creation' : 'Magic Recomposition'}
                 </h2>
-                <div className="w-24"></div> {/* Spacer */}
+                <div className="w-24"></div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                {/* Left Column: Settings */}
                 <div className="space-y-8">
-                    
-                    {/* Aspect Ratio */}
                     <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
                         <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                            <ImageIcon size={18} className="text-tavern-gold"/> Aspect Ratio
+                            <ImageIcon size={18} className="text-tavern-gold"/> Target Ratio
                         </h3>
                         <div className="grid grid-cols-4 gap-3">
                             {ASPECT_RATIO_OPTIONS.map((ratio) => (
@@ -213,11 +199,10 @@ const App = () => {
                         </div>
                     </div>
 
-                    {/* Templates (Only for Recomposition) */}
                     {!isNewCreationMode && (
                         <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
                             <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <Sliders size={18} className="text-tavern-gold"/> Scene Template
+                                <Wand2 size={18} className="text-tavern-gold"/> Environment Template
                             </h3>
                             <div className="grid grid-cols-2 gap-4">
                                 {TEMPLATES.map(t => (
@@ -246,14 +231,13 @@ const App = () => {
                         </div>
                     )}
 
-                    {/* Prompt Input */}
                     <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
                         <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                            <Wand2 size={18} className="text-tavern-gold"/> {isNewCreationMode ? 'Image Description' : 'Custom Instructions (Optional)'}
+                            <Plus size={18} className="text-tavern-gold"/> {isNewCreationMode ? 'Describe Vision' : 'Additional Magic'}
                         </h3>
                         <textarea
                             className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-white focus:border-tavern-gold focus:ring-1 focus:ring-tavern-gold outline-none h-32"
-                            placeholder={isNewCreationMode ? "Describe exactly what you want to create..." : "E.g., Make the lighting more dramatic, add a coffee cup on the table..."}
+                            placeholder={isNewCreationMode ? "Describe what you want to create..." : "Extra instructions for N.I.M (e.g., set the time to sunset)"}
                             value={customPrompt}
                             onChange={(e) => setCustomPrompt(e.target.value)}
                         />
@@ -265,14 +249,13 @@ const App = () => {
                         className="w-full text-lg py-4"
                         disabled={isNewCreationMode && !customPrompt.trim()}
                     >
-                        {isNewCreationMode ? 'Generate Image' : 'Recompose Image'}
+                        {isNewCreationMode ? 'Cast Magic' : 'Run Server Recomposition'}
                     </Button>
                 </div>
 
-                {/* Right Column: Preview / Stock */}
                 <div className="space-y-8">
                      <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-                        <h3 className="text-lg font-semibold text-white mb-4">Inspiration Gallery</h3>
+                        <h3 className="text-lg font-semibold text-white mb-4">N.I.M's Inspiration</h3>
                         <div className="grid grid-cols-2 gap-4">
                             {STOCK_IMAGES.map(stock => (
                                 <img 
@@ -280,13 +263,12 @@ const App = () => {
                                     src={stock.url} 
                                     alt={stock.description}
                                     className="rounded-lg hover:opacity-80 cursor-pointer transition-opacity border border-gray-700"
-                                    onClick={() => setCustomPrompt(prev => prev + (prev ? " " : "") + `Style like: ${stock.description}`)}
+                                    onClick={() => setCustomPrompt(prev => prev + (prev ? " " : "") + `Style: ${stock.description}`)}
                                 />
                             ))}
                         </div>
                      </div>
                 </div>
-
             </div>
           </div>
         );
@@ -296,35 +278,25 @@ const App = () => {
           <div className="max-w-6xl mx-auto w-full flex flex-col items-center">
             <div className="w-full flex justify-between items-center mb-6">
                 <Button variant="ghost" onClick={() => setCurrentStep(AppStep.CONFIGURATION)}>
-                    <ArrowLeft size={18} /> Adjust Settings
+                    <ArrowLeft size={18} /> Adjust Composition
                 </Button>
-                <div className="flex gap-4">
+                <div className="flex gap-3">
                     <Button onClick={() => downloadImage('png')} variant="secondary">
                         <Download size={18} /> PNG
                     </Button>
-                    <Button onClick={() => downloadImage('jpeg')} variant="secondary">
-                        <Download size={18} /> JPG
-                    </Button>
                     <Button onClick={downloadPdf} variant="primary">
-                        <FileText size={18} /> Save PDF
+                        <FileText size={18} /> Export PDF
                     </Button>
                 </div>
             </div>
 
             {generatedImage && (
-                <div className="relative group w-full max-w-4xl bg-black rounded-xl overflow-hidden shadow-2xl border border-gray-800">
+                <div className="relative group w-full max-w-5xl bg-black rounded-2xl overflow-hidden shadow-2xl border border-gray-800">
                     <img 
                         src={generatedImage.url} 
-                        alt="Generated Result" 
-                        className="w-full h-auto object-contain max-h-[70vh]"
+                        alt="N.I.M Result" 
+                        className="w-full h-auto object-contain max-h-[75vh]"
                     />
-                    
-                    {/* Prompt Overlay */}
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/80 p-4 transform translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-                        <p className="text-sm text-gray-300">
-                            <span className="text-tavern-gold font-bold">Prompt:</span> {generatedImage.promptUsed}
-                        </p>
-                    </div>
                 </div>
             )}
 
@@ -335,7 +307,7 @@ const App = () => {
                      setAnalyzedElements([]);
                      setGeneratedImage(null);
                  }} variant="ghost">
-                    <RefreshCw size={18} /> Start Over
+                    <RefreshCw size={18} /> New Session
                  </Button>
             </div>
           </div>
@@ -348,40 +320,37 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-tavern-dark text-gray-100 font-sans selection:bg-tavern-gold selection:text-tavern-dark">
-      {/* Header */}
-      <header className="border-b border-gray-800 bg-black/20 backdrop-blur-md sticky top-0 z-50">
+      <header className="border-b border-gray-800 bg-black/40 backdrop-blur-xl sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-14 h-14 bg-gradient-to-br from-tavern-gold to-yellow-700 rounded-lg flex items-center justify-center text-tavern-dark font-black text-xl shadow-lg shadow-tavern-gold/20 tracking-tighter border-2 border-tavern-gold/50">
-                N.I.M
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-tavern-gold to-yellow-700 rounded-xl flex items-center justify-center text-tavern-dark font-black text-lg shadow-lg shadow-tavern-gold/20 border-2 border-white/10">
+                NIM
             </div>
             <div>
-                <h1 className="text-2xl font-black text-white tracking-tight">N.I.M's</h1>
-                <p className="text-[10px] text-tavern-gold uppercase tracking-[0.2em] font-bold">Nikko's Image Magic Server</p>
+                <h1 className="text-xl font-black text-white leading-none">N.I.M's</h1>
+                <p className="text-[9px] text-tavern-gold uppercase tracking-[0.25em] font-bold mt-1">Image Magic Server</p>
             </div>
           </div>
           
-          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-400">
-             <span className={currentStep === AppStep.UPLOAD ? 'text-tavern-gold' : ''}>1. Upload</span>
-             <span className="w-4 h-px bg-gray-700"></span>
-             <span className={currentStep === AppStep.SELECTION ? 'text-tavern-gold' : ''}>2. Select</span>
-             <span className="w-4 h-px bg-gray-700"></span>
-             <span className={currentStep === AppStep.CONFIGURATION ? 'text-tavern-gold' : ''}>3. Style</span>
-             <span className="w-4 h-px bg-gray-700"></span>
-             <span className={currentStep === AppStep.RESULT ? 'text-tavern-gold' : ''}>4. Result</span>
+          <div className="hidden md:flex items-center gap-6 text-xs font-bold uppercase tracking-widest text-gray-500">
+             <span className={currentStep === AppStep.UPLOAD ? 'text-tavern-gold' : ''}>01 Source</span>
+             <span className="w-6 h-px bg-gray-800"></span>
+             <span className={currentStep === AppStep.SELECTION ? 'text-tavern-gold' : ''}>02 Wand</span>
+             <span className="w-6 h-px bg-gray-800"></span>
+             <span className={currentStep === AppStep.CONFIGURATION ? 'text-tavern-gold' : ''}>03 Cast</span>
+             <span className="w-6 h-px bg-gray-800"></span>
+             <span className={currentStep === AppStep.RESULT ? 'text-tavern-gold' : ''}>04 Result</span>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-12">
         {error && (
-            <div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg mb-8 flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                {error}
+            <div className="bg-red-950/40 border border-red-900/50 text-red-400 p-4 rounded-xl mb-10 flex items-center gap-4 animate-in fade-in slide-in-from-top-4">
+                <div className="w-3 h-3 rounded-full bg-red-500 shadow-lg shadow-red-500/50 animate-pulse"></div>
+                <p className="text-sm font-medium">{error}</p>
             </div>
         )}
-        
         {renderContent()}
       </main>
     </div>
