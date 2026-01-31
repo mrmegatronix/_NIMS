@@ -10,11 +10,11 @@
         theme: {
           extend: {
             colors: {
-              'tavern-dark': '#1a1a1a',
+              'tavern-dark': '#0f0f12',
               'tavern-gold': '#c5a059',
               'tavern-gold-hover': '#d4b06a',
               'tavern-cream': '#f3f4f6',
-              'tavern-red': '#7f1d1d'
+              'tavern-card': '#1a1a1f'
             },
             fontFamily: {
               sans: ['Inter', 'system-ui', 'sans-serif'],
@@ -26,25 +26,39 @@
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
       body {
-        background-color: #1a1a1a;
+        background-color: #0f0f12;
         color: #f3f4f6;
+        overflow-x: hidden;
+      }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #1a1a1f;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #c5a059;
+        border-radius: 10px;
       }
     </style>
-  <script type="importmap">
+    <script type="importmap">
 {
   "imports": {
     "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
-    "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "react-dom/client": "https://esm.sh/react-dom@^19.2.3/client",
     "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "pdfjs-dist": "https://esm.sh/pdfjs-dist@3.11.174",
-    "jspdf": "https://esm.sh/jspdf@2.5.1"
+    "jspdf": "https://esm.sh/jspdf@2.5.1",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/"
   }
 }
 </script>
-</head>
+  </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

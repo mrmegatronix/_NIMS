@@ -1,28 +1,28 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalyzedElement, AspectRatio } from "../types";
 
-const API_KEY = process.env.API_KEY || '';
-
-// Initialize client (creating new instance per call recommended for key rotation/safety in some patterns, 
-// but single instance is fine if env is static. Adhering to prompt instructions to use process.env.API_KEY)
-const getAiClient = () => new GoogleGenAI({ apiKey: API_KEY });
+/**
+ * N.I.M's Core Magic Service
+ */
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
 /**
  * Analyzes an image to identify distinct elements for the "Magic Wand" simulation.
  */
 export const analyzeImageContents = async (base64Image: string): Promise<AnalyzedElement[]> => {
-  const ai = getAiClient();
   const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: {
-        parts: [
-          { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
-          { text: 'Analyze this image. Identify the distinct visual elements (main person, specific objects, background context, visible text) that could be separated. Return a JSON object with a list of elements.' }
-        ]
-      },
+      model: 'gemini-2.5-flash-lite-latest', // Fast and reliable for vision analysis
+      contents: [
+        {
+          parts: [
+            { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
+            { text: 'Analyze this image or document. List the main visual subjects, text blocks, and objects that could be extracted and recomposed into a new scene. Return as JSON.' }
+          ]
+        }
+      ],
       config: {
         responseMimeType: 'application/json',
         responseSchema: {
@@ -33,9 +33,9 @@ export const analyzeImageContents = async (base64Image: string): Promise<Analyze
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  label: { type: Type.STRING, description: "Short descriptive name of the element" },
+                  label: { type: Type.STRING },
                   type: { type: Type.STRING, enum: ['object', 'text', 'background', 'person'] },
-                  description: { type: Type.STRING, description: "Detailed visual description for reconstruction" }
+                  description: { type: Type.STRING }
                 },
                 required: ['label', 'type', 'description']
               }
@@ -47,26 +47,21 @@ export const analyzeImageContents = async (base64Image: string): Promise<Analyze
 
     const result = JSON.parse(response.text || '{"elements": []}');
     
-    // Map to our internal type with IDs
     return result.elements.map((el: any, index: number) => ({
       id: `el-${index}`,
       label: el.label,
       type: el.type,
-      selected: el.type !== 'background' // Default to selecting foreground items
+      selected: el.type !== 'background'
     }));
 
   } catch (error) {
-    console.error("Analysis failed:", error);
-    // Fallback if analysis fails
-    return [
-      { id: '1', label: 'Main Subject', type: 'person', selected: true },
-      { id: '2', label: 'Background', type: 'background', selected: false },
-    ];
+    console.error("N.I.M's Analysis failed:", error);
+    return [{ id: '1', label: 'Main Subject', type: 'person', selected: true }];
   }
 };
 
 /**
- * Generates the recomposed image.
+ * Generates the recomposed image using the portrait reference.
  */
 export const generateRecomposedImage = async (
   originalImageBase64: string,
@@ -75,74 +70,60 @@ export const generateRecomposedImage = async (
   templatePrompt: string,
   customPrompt?: string
 ): Promise<string> => {
-  const ai = getAiClient();
   const cleanBase64 = originalImageBase64.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
-
-  // Construct a prompt that instructs the model to use the reference image but only keep selected parts
   const keptItems = selectedElements.filter(e => e.selected).map(e => e.label).join(", ");
   
-  let userInstruction = "";
-  if (customPrompt) {
-    userInstruction = `Instruction: ${customPrompt}. `;
-  } else {
-    userInstruction = `Create a professional composition featuring: ${keptItems}. Place them ${templatePrompt}. `;
-  }
-
-  const prompt = `${userInstruction} 
-  Use the provided image as a strict visual reference for the appearance of the ${keptItems}. 
-  Ignore the original aspect ratio. 
-  Output a high-quality, photorealistic image suitable for a TV display. 
-  Ensure text is legible if preserved.`;
+  const prompt = `
+    Task: Recompose visual elements from the provided portrait source into a new cinematic landscape.
+    Keep these subjects: ${keptItems}.
+    Environmental Style: ${templatePrompt}.
+    Custom Instructions: ${customPrompt || 'Create a balanced, high-resolution 1080p-style composition.'}
+    Ensure subjects maintain their likeness but fit naturally into the new wide orientation.
+  `;
 
   try {
+    // Use gemini-2.5-flash-image for standard high-quality generation
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
-      contents: {
-        parts: [
-          { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
-          { text: prompt }
-        ]
-      },
+      model: 'gemini-2.5-flash-image',
+      contents: [
+        {
+          parts: [
+            { inlineData: { mimeType: 'image/jpeg', data: cleanBase64 } },
+            { text: prompt }
+          ]
+        }
+      ],
       config: {
         imageConfig: {
-          aspectRatio: aspectRatio as any, // Cast because SDK types might lag behind specific enum values
-          imageSize: '1K' // 2K is ideal for 1080p+, but SDK allows 1K, 2K, 4K. Start with 1K for speed/stability or 2K if needed.
+          aspectRatio: aspectRatio as any
         }
       }
     });
 
-    // Extract image
     for (const part of response.candidates?.[0]?.content?.parts || []) {
       if (part.inlineData) {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
-    throw new Error("No image data returned in response.");
+    throw new Error("No image data generated by the server.");
 
   } catch (error) {
-    console.error("Generation failed:", error);
+    console.error("N.I.M's Generation failed:", error);
     throw error;
   }
 };
 
 /**
- * Generates a completely new image from scratch (fallback tool).
+ * Generates a completely new image from scratch.
  */
 export const generateNewImage = async (prompt: string, aspectRatio: AspectRatio): Promise<string> => {
-  const ai = getAiClient();
-  
   try {
-     // Use Imagen model for pure generation if preferred, or Gemini 3 Pro Image. 
-     // Instructions say "MUST add image generation ... using model gemini-3-pro-image-preview"
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
-      contents: {
-        parts: [{ text: prompt }]
-      },
+      model: 'gemini-2.5-flash-image',
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
         imageConfig: {
-          aspectRatio: aspectRatio as any,
-          imageSize: '1K'
+          aspectRatio: aspectRatio as any
         }
       }
     });
@@ -152,9 +133,9 @@ export const generateNewImage = async (prompt: string, aspectRatio: AspectRatio)
         return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
-    throw new Error("No image data returned");
+    throw new Error("Empty response from magic server.");
   } catch (error) {
-    console.error("New image generation failed:", error);
+    console.error("N.I.M's New image generation failed:", error);
     throw error;
   }
-}
+};
